@@ -3,8 +3,9 @@
 
 import unittest
 from unittest.mock import patch, Mock, PropertyMock
-from parameterized import parameterized
+from parameterized import parameterized, parameterized_class
 from client import GithubOrgClient
+from fixtures import TEST_PAYLOAD
 
 
 class TestGithubOrgClient(unittest.TestCase):
@@ -58,3 +59,53 @@ class TestGithubOrgClient(unittest.TestCase):
         self.assertEqual(
             github_org_client.has_license(repo, license_key), expected_result
         )
+
+
+@parameterized_class((
+    'org_payload',
+    'repos_payload',
+    'expected_repos',
+    'apache2_repos'),
+    TEST_PAYLOAD
+)
+class TestIntegrationGithubOrgClient(unittest.TestCase):
+    """unittests for Integration test: fixtures"""
+    @classmethod
+    def setUpClass(cls):
+        """sets up the class"""
+        cls.get_patcher = patch("request.get")
+        cls.mock_get = cls.get_patcher.start()
+
+        def side_effect(url):
+            """make sure it returns what needs to return"""
+            class MockResponse:
+                def __init__(self, json_data):
+                    self.json_data = json_data
+
+                def json(self):
+                    return self.json_data
+
+            if url.endswith("/orgs/google"):
+                return MockResponse(cls.org_payload)
+            elif url.endswith("/orgs/google/repos"):
+                return MockResponse(cls.repos_payload)
+            else:
+                return None
+
+        cls.mock_get.side_effect = side_effect
+
+    @classmethod
+    def tearDownClass(cls):
+        """tear down what setup made"""
+        cls.get_patcher.stop()
+
+    def test_public_repos(self):
+        """test public repo"""
+        github_org_client = GithubOrgClient("google")
+        self.assertEqual(github_org_client.public_repos(), self.expected_repos)
+
+    def test_public_repos_with_license(self):
+        """test public repo with license"""
+        github_org_client = GithubOrgClient("google")
+        self.assertEqual(github_org_client.public_repos(license="apache-2.0"),
+                         self.apache2_repos)
